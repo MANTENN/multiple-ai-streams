@@ -16,7 +16,7 @@ async function fetchAiResponse(messages: any, transform: TransformStream, testSt
   writter.write('')
   writter.releaseLock()
 
-  await new Promise((resolve) => setTimeout(resolve, 20 * 1000))
+  await new Promise((resolve) => setTimeout(resolve, 30 * 1000))
   const aiResponse = await openai.chat.completions.create({
     model: 'gpt-4',
     stream: true,
