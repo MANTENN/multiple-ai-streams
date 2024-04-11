@@ -10,12 +10,13 @@ const openai = new OpenAI({
 // Set the runtime to edge for best performance
 export const runtime = 'edge';
 
-async function fetchAiResponse(messages: any, writable: WritableStream) {
+async function fetchAiResponse(messages: any, transform: TransformStream, testStream: TransformStream) {
+  const { writable, readable } = transform
   const writter = writable.getWriter()
   writter.write('')
   writter.releaseLock()
 
-  await new Promise((resolve) => setTimeout(resolve, 500 * 1000))
+  await new Promise((resolve) => setTimeout(resolve, 20 * 1000))
   const aiResponse = await openai.chat.completions.create({
     model: 'gpt-4',
     stream: true,
@@ -23,25 +24,38 @@ async function fetchAiResponse(messages: any, writable: WritableStream) {
   })
 
   const stream1 = OpenAIStream(aiResponse)
+  const testWritter = testStream.writable.getWriter()
+  testWritter.write(`0:" Fuck off!"\n`)
+  testWritter.releaseLock()
+  const responses = [stream1, testStream.readable]
 
-  stream1.pipeTo(writable)
+  responses.reduce(
+    (a, res, i, arr) =>
+      a.then(() => res.pipeTo(writable, { preventClose: i + 1 !== arr.length })),
+    Promise.resolve(),
+  );
+
+  // stream1.pipeTo(writable, { preventClose: true }).then(async _ => {
+  //   console.log('write completed?')
+  //   // writter.write(`0:" Successfully written."\n`)
+  //   // writter.close()
+  // })
 }
 export async function POST(req: Request, res: any) {
   try {
     const { messages } = await req.json();
 
-    const { writable, readable } = new TransformStream(
-      //   {
-      //   transform(chunk, controller) {
-      //     controller.enqueue(chunk)
-      //   }
-      // }
+    const transform = new TransformStream(
+      {
+        transform(chunk, controller) {
+          controller.enqueue(chunk)
+        }
+      }
     )
-    // writable.getWriter().write(`0:" 1"`)
 
-    fetchAiResponse(messages, writable)
+    fetchAiResponse(messages, transform, new TransformStream())
 
-    return new StreamingTextResponse(readable, { status: 200 })
+    return new StreamingTextResponse(transform.readable, { status: 200 })
   } catch (error: any) {
     console.log('Error', error)
     return new NextResponse(error)
